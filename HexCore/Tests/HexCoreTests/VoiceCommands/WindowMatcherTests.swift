@@ -185,7 +185,7 @@ struct WindowMatcherTests {
         let result = WindowMatcher.bestMatch(target: "huddle kit", candidates: candidates)
         #expect(result != nil)
         #expect(result!.index == 0)
-        // 2 out of 2 target tokens match -> score should be 80
+        // All target tokens found -> exact token match -> score 100
         #expect(result!.score >= 80)
     }
 }
