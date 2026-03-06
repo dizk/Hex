@@ -216,7 +216,7 @@ struct WindowClientTests {
             windowReference: nil
         )
 
-        var receivedWindow: WindowInfo?
+        nonisolated(unsafe) var receivedWindow: WindowInfo?
 
         let client = WindowClient(
             listWindows: { [] },
