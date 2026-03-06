@@ -75,19 +75,7 @@ struct VoiceCommandIntegrationTests {
                 allowSleep: {}
             )
 
-            $0.transcriptPersistence = TranscriptPersistenceClient(
-                save: { text, url, duration, bundleID, appName in
-                    Transcript(
-                        timestamp: Date(),
-                        text: text,
-                        audioPath: url,
-                        duration: duration,
-                        sourceAppBundleID: bundleID,
-                        sourceAppName: appName
-                    )
-                },
-                deleteAudio: { _ in }
-            )
+            $0.transcriptPersistence = .testValue
 
             $0.windowClient = WindowClient(
                 listWindows: { windowsForListing },
@@ -98,7 +86,7 @@ struct VoiceCommandIntegrationTests {
             )
         }
 
-        store.exhaustivity = .off
+        store.exhaustivity = .off(showSkippedAssertions: false)
 
         return store
     }
@@ -215,7 +203,7 @@ struct VoiceCommandIntegrationTests {
                 focusWindow: { _ in false }
             )
         }
-        store.exhaustivity = .off
+        store.exhaustivity = .off(showSkippedAssertions: false)
 
         await store.send(.startRecording)
         await awaitEffects()
