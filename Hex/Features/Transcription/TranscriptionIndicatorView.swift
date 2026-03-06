@@ -67,42 +67,16 @@ struct TranscriptionIndicatorView: View {
   var status: Status
   var meter: Meter
 
-  let transcribeBaseColor: Color = .blue
+  /// Background color with meter modulation for recording; delegates to Status for all others.
   private var backgroundColor: Color {
-    switch status {
-    case .hidden: return Color.clear
-    case .optionKeyPressed: return Color.black
-    case .recording: return .red.mix(with: .black, by: 0.5).mix(with: .red, by: meter.averagePower * 3)
-    case .transcribing: return transcribeBaseColor.mix(with: .black, by: 0.5)
-    case .prewarming: return transcribeBaseColor.mix(with: .black, by: 0.5)
-    case .commandSuccess: return Color.green
-    case .commandFailure: return Color.red
+    if status == .recording {
+      return .red.mix(with: .black, by: 0.5).mix(with: .red, by: meter.averagePower * 3)
     }
+    return status.baseBackgroundColor
   }
 
-  private var strokeColor: Color {
-    switch status {
-    case .hidden: return Color.clear
-    case .optionKeyPressed: return Color.black
-    case .recording: return Color.red.mix(with: .white, by: 0.1).opacity(0.6)
-    case .transcribing: return transcribeBaseColor.mix(with: .white, by: 0.1).opacity(0.6)
-    case .prewarming: return transcribeBaseColor.mix(with: .white, by: 0.1).opacity(0.6)
-    case .commandSuccess: return Color.green.mix(with: .white, by: 0.3)
-    case .commandFailure: return Color.red.mix(with: .white, by: 0.3)
-    }
-  }
-
-  private var innerShadowColor: Color {
-    switch status {
-    case .hidden: return Color.clear
-    case .optionKeyPressed: return Color.clear
-    case .recording: return Color.red
-    case .transcribing: return transcribeBaseColor
-    case .prewarming: return transcribeBaseColor
-    case .commandSuccess: return Color.green.mix(with: .black, by: 0.3)
-    case .commandFailure: return Color.red.mix(with: .black, by: 0.3)
-    }
-  }
+  private var strokeColor: Color { status.baseStrokeColor }
+  private var innerShadowColor: Color { status.baseInnerShadowColor }
 
   private let cornerRadius: CGFloat = 8
   private let baseWidth: CGFloat = 16
