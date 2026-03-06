@@ -206,7 +206,7 @@ struct VoiceCommandIntegrationTests {
         store.exhaustivity = .off(showSkippedAssertions: false)
 
         await store.send(.startRecording)
-        await awaitEffects()
+        await store.receive(\.windowsEnumerated)
 
         #expect(listWindowsCalled == true)
         #expect(store.state.cachedWindows == Self.testWindows)

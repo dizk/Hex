@@ -50,6 +50,8 @@ struct WindowClient {
 // MARK: - DependencyKey
 
 extension WindowClient: DependencyKey {
+    static var testValue: Self { Self() }
+
     static var liveValue: Self {
         Self(
             listWindows: {
