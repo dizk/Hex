@@ -11,13 +11,23 @@ A macOS menu bar app for on-device voice-to-text. Press a hotkey, speak, and the
 - Multiple model sizes (Tiny through Large)
 - Apple Silicon native
 
-## Install
+## Building
 
-**[Download the latest DMG](https://hex-updates.s3.us-east-1.amazonaws.com/hex-latest.dmg)**
+Requires macOS 14+, Xcode 15+, Apple Silicon.
 
-Or via Homebrew:
+1. Clone the repository
+2. Open `Hex.xcodeproj` in Xcode
+3. Select the **Hex** scheme and your Mac as the run destination
+4. Build and run (`Cmd+R`)
+
+From the command line:
 ```bash
-brew install --cask kitlangton-hex
+xcodebuild -scheme Hex -configuration Debug -skipMacroValidation
+```
+
+Unit tests:
+```bash
+cd HexCore && swift test
 ```
 
 ## Usage
@@ -26,21 +36,6 @@ brew install --cask kitlangton-hex
 2. Configure a global hotkey in Settings
 3. **Press-and-hold** the hotkey to record, release to transcribe and paste
 4. **Double-tap** the hotkey to lock recording, tap once more to stop
-
-## Building
-
-Requires macOS 14+, Xcode 15+, Apple Silicon.
-
-```bash
-open Hex.xcodeproj
-# Or from the command line:
-xcodebuild -scheme Hex -configuration Debug -skipMacroValidation
-```
-
-Unit tests:
-```bash
-cd HexCore && swift test
-```
 
 ## License
 
