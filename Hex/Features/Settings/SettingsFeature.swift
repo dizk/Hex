@@ -91,6 +91,10 @@ struct SettingsFeature {
     case addWordRemapping
     case removeWordRemapping(UUID)
     case setRemappingScratchpadFocused(Bool)
+
+    // App aliases
+    case addAppAlias
+    case removeAppAlias(UUID)
   }
 
   @Dependency(\.keyEventMonitor) var keyEventMonitor
@@ -217,6 +221,18 @@ struct SettingsFeature {
       case let .removeWordRemapping(id):
         state.$hexSettings.withLock {
           $0.wordRemappings.removeAll { $0.id == id }
+        }
+        return .none
+
+      case .addAppAlias:
+        state.$hexSettings.withLock {
+          $0.appAliases.append(.init(alias: "", appName: ""))
+        }
+        return .none
+
+      case let .removeAppAlias(id):
+        state.$hexSettings.withLock {
+          $0.appAliases.removeAll { $0.id == id }
         }
         return .none
 

@@ -450,6 +450,14 @@ private extension TranscriptionFeature {
     // Check for voice commands (e.g. "switch to huddle", "open chrome")
     if let voiceCommandTarget = VoiceCommandDetector.detect(result) {
       voiceCommandLogger.info("Voice command detected: target='\(voiceCommandTarget, privacy: .private)'")
+
+      // Resolve aliases before window matching
+      let aliases = state.hexSettings.appAliases
+      let resolvedTarget = AppAliasResolver.resolve(target: voiceCommandTarget, aliases: aliases)
+      if resolvedTarget != voiceCommandTarget {
+        voiceCommandLogger.info("Alias resolved: '\(voiceCommandTarget, privacy: .private)' -> '\(resolvedTarget, privacy: .private)'")
+      }
+
       let candidates = state.cachedWindows.enumerated().map { index, window in
         WindowCandidate(appName: window.appName, windowTitle: window.windowTitle, index: index)
       }
@@ -463,7 +471,7 @@ private extension TranscriptionFeature {
       let saveHistory = state.hexSettings.saveTranscriptionHistory
       let maxEntries = state.hexSettings.maxHistoryEntries
 
-      if let match = WindowMatcher.bestMatch(target: voiceCommandTarget, candidates: candidates) {
+      if let match = WindowMatcher.bestMatch(target: resolvedTarget, candidates: candidates) {
         let matchedWindow = cachedWindows[match.index]
         voiceCommandLogger.info("Window matched: '\(matchedWindow.appName, privacy: .public)' – '\(matchedWindow.windowTitle, privacy: .private)' score=\(match.score)")
         state.commandFeedbackStatus = .commandSuccess
@@ -501,7 +509,7 @@ private extension TranscriptionFeature {
           scheduleCommandFeedbackDismiss()
         )
       } else {
-        voiceCommandLogger.info("No window matched for target '\(voiceCommandTarget, privacy: .private)'; discarding command")
+        voiceCommandLogger.info("No window matched for target '\(resolvedTarget, privacy: .private)'; discarding command")
         state.commandFeedbackStatus = .commandFailure
         return .merge(
           .run { _ in
