@@ -24,3 +24,9 @@ node_modules/
 
 # VM dev workflow (logs, scripts)
 dev/
+
+# Cadence skills (committed to repo)
+!.claude/
+!.claude/skills/
+!.claude/skills/cadence-*/
+!.claude/skills/cadence-*/**
