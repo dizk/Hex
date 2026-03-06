@@ -141,11 +141,11 @@ struct TranscriptionIndicatorView: View {
           width: status == .recording ? expandedWidth : baseWidth,
           height: baseWidth
         )
-        .opacity(status == .hidden ? 0 : failureFlashOpacity)
+        .opacity(status == .hidden ? 0 : (status == .commandFailure ? failureFlashOpacity : 1.0))
         .scaleEffect(status == .hidden ? 0.0 : 1)
         .blur(radius: status == .hidden ? 4 : 0)
         .animation(.bouncy(duration: 0.3), value: status)
-        .changeEffect(.glow(color: .red.opacity(0.5), radius: 8), value: status)
+        .changeEffect(.glow(color: .red.opacity(0.5), radius: 8), value: status == .recording)
         .changeEffect(.glow(color: .green, radius: 8), value: commandSuccessGlow)
         .changeEffect(.glow(color: .red, radius: 8), value: commandFailureGlow)
         .changeEffect(.shine(angle: .degrees(0), duration: 0.6), value: transcribeEffect)
