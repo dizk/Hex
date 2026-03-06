@@ -14,11 +14,12 @@ import SwiftUI
 import WhisperKit
 
 private let transcriptionFeatureLogger = HexLog.transcription
+private let voiceCommandLogger = HexLog.voiceCommands
 
 @Reducer
 struct TranscriptionFeature {
   @ObservableState
-  struct State {
+  struct State: Equatable {
     var isRecording: Bool = false
     var isTranscribing: Bool = false
     var isPrewarming: Bool = false
@@ -27,6 +28,7 @@ struct TranscriptionFeature {
     var meter: Meter = .init(averagePower: 0, peakPower: 0)
     var sourceAppBundleID: String?
     var sourceAppName: String?
+    var cachedWindows: [WindowInfo] = []
     @Shared(.hexSettings) var hexSettings: HexSettings
     @Shared(.isRemappingScratchpadFocused) var isRemappingScratchpadFocused: Bool = false
     @Shared(.modelBootstrapState) var modelBootstrapState: ModelBootstrapState
@@ -53,6 +55,9 @@ struct TranscriptionFeature {
     case transcriptionResult(String, URL)
     case transcriptionError(Error, URL?)
 
+    // Window enumeration (for voice commands)
+    case windowsEnumerated([WindowInfo])
+
     // Model availability
     case modelMissing
   }
@@ -70,6 +75,7 @@ struct TranscriptionFeature {
   @Dependency(\.sleepManagement) var sleepManagement
   @Dependency(\.date.now) var now
   @Dependency(\.transcriptPersistence) var transcriptPersistence
+  @Dependency(\.windowClient) var windowClient
 
   var body: some ReducerOf<Self> {
     Reduce { state, action in
@@ -120,6 +126,10 @@ struct TranscriptionFeature {
 
       case let .transcriptionError(error, audioURL):
         return handleTranscriptionError(&state, error: error, audioURL: audioURL)
+
+      case let .windowsEnumerated(windows):
+        state.cachedWindows = windows
+        return .none
 
       case .modelMissing:
         return .none
@@ -295,16 +305,23 @@ private extension TranscriptionFeature {
     }
     transcriptionFeatureLogger.notice("Recording started at \(startTime.ISO8601Format())")
 
-    // Prevent system sleep during recording
-    return .run { [sleepManagement, preventSleep = state.hexSettings.preventSystemSleep] send in
-      // Play sound immediately for instant feedback
-      soundEffect.play(.startRecording)
+    // Prevent system sleep during recording and enumerate windows for voice commands
+    return .merge(
+      .run { [sleepManagement, preventSleep = state.hexSettings.preventSystemSleep] send in
+        // Play sound immediately for instant feedback
+        soundEffect.play(.startRecording)
 
-      if preventSleep {
-        await sleepManagement.preventSleep(reason: "Hex Voice Recording")
+        if preventSleep {
+          await sleepManagement.preventSleep(reason: "Hex Voice Recording")
+        }
+        await recording.startRecording()
+      },
+      .run { [windowClient] send in
+        let windows = await windowClient.listWindows()
+        voiceCommandLogger.info("Enumerated \(windows.count) windows for voice command matching")
+        await send(.windowsEnumerated(windows))
       }
-      await recording.startRecording()
-    }
+    )
   }
 
   func handleStopRecording(_ state: inout State) -> Effect<Action> {
@@ -404,8 +421,41 @@ private extension TranscriptionFeature {
 
     // If empty text, nothing else to do
     guard !result.isEmpty else {
+      state.cachedWindows = []
       return .none
     }
+
+    // Check for voice commands (e.g. "switch to huddle", "open chrome")
+    if let voiceCommandTarget = VoiceCommandDetector.detect(result) {
+      voiceCommandLogger.info("Voice command detected: target='\(voiceCommandTarget, privacy: .private)'")
+      let candidates = state.cachedWindows.enumerated().map { index, window in
+        WindowCandidate(appName: window.appName, windowTitle: window.windowTitle, index: index)
+      }
+      let cachedWindows = state.cachedWindows
+      state.cachedWindows = []
+
+      if let match = WindowMatcher.bestMatch(target: voiceCommandTarget, candidates: candidates) {
+        let matchedWindow = cachedWindows[match.index]
+        voiceCommandLogger.info("Window matched: '\(matchedWindow.appName, privacy: .public)' – '\(matchedWindow.windowTitle, privacy: .private)' score=\(match.score)")
+        return .run { [windowClient] _ in
+          try? FileManager.default.removeItem(at: audioURL)
+          let focused = await windowClient.focusWindow(matchedWindow)
+          if focused {
+            voiceCommandLogger.info("Window focused successfully")
+          } else {
+            voiceCommandLogger.error("Failed to focus window '\(matchedWindow.appName, privacy: .public)'")
+          }
+        }
+      } else {
+        voiceCommandLogger.info("No window matched for target '\(voiceCommandTarget, privacy: .private)'; discarding command")
+        return .run { _ in
+          try? FileManager.default.removeItem(at: audioURL)
+        }
+      }
+    }
+
+    // Clear cached windows now that voice command check is complete
+    state.cachedWindows = []
 
     let duration = state.recordingStartTime.map { Date().timeIntervalSince($0) } ?? 0
 
@@ -466,8 +516,9 @@ private extension TranscriptionFeature {
   ) -> Effect<Action> {
     state.isTranscribing = false
     state.isPrewarming = false
+    state.cachedWindows = []
     state.error = error.localizedDescription
-    
+
     if let audioURL {
       try? FileManager.default.removeItem(at: audioURL)
     }
@@ -524,6 +575,7 @@ private extension TranscriptionFeature {
     state.isTranscribing = false
     state.isRecording = false
     state.isPrewarming = false
+    state.cachedWindows = []
 
     return .merge(
       .cancel(id: CancelID.transcription),
@@ -541,6 +593,7 @@ private extension TranscriptionFeature {
   func handleDiscard(_ state: inout State) -> Effect<Action> {
     state.isRecording = false
     state.isPrewarming = false
+    state.cachedWindows = []
 
     // Silently discard - no sound effect
     return .run { [sleepManagement] _ in
