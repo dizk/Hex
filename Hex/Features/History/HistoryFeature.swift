@@ -115,6 +115,16 @@ struct HistoryFeature {
 		case navigateToSettings
 	}
 
+	/// Returns the appropriate text to copy for a transcript.
+	/// For command entries, returns the action description (e.g., "Switched to Google Chrome").
+	/// For regular transcriptions, returns the transcript text.
+	static func copyText(for transcript: Transcript) -> String {
+		if let commandInfo = transcript.commandInfo {
+			return commandInfo.actionDescription
+		}
+		return transcript.text
+	}
+
 	@Dependency(\.pasteboard) var pasteboard
 
 	var body: some ReducerOf<Self> {
@@ -221,22 +231,55 @@ struct TranscriptView: View {
 	let onCopy: () -> Void
 	let onDelete: () -> Void
 
+	/// Background tint color for command entries, or nil for regular transcriptions.
+	private var commandBackgroundTint: Color? {
+		guard let commandInfo = transcript.commandInfo else { return nil }
+		return commandInfo.success ? Color.green.opacity(0.06) : Color.orange.opacity(0.06)
+	}
+
 	var body: some View {
 		VStack(alignment: .leading, spacing: 0) {
-			Text(transcript.text)
-				.font(.body)
-				.lineLimit(nil)
-				.fixedSize(horizontal: false, vertical: true)
-				.padding(.trailing, 40) // Space for buttons
-				.padding(12)
+			VStack(alignment: .leading, spacing: 4) {
+				Text(transcript.text)
+					.font(.body)
+					.lineLimit(nil)
+					.fixedSize(horizontal: false, vertical: true)
+
+				// Action subtitle for command entries
+				if let commandInfo = transcript.commandInfo {
+					Text(commandInfo.actionDescription)
+						.font(.subheadline)
+						.foregroundStyle(.secondary)
+				}
+			}
+			.padding(.trailing, 40) // Space for buttons
+			.padding(12)
 
 			Divider()
 
 			HStack {
 				HStack(spacing: 6) {
-					// App icon and name
-					if let bundleID = transcript.sourceAppBundleID,
+					// Command status badge
+					if let commandInfo = transcript.commandInfo {
+						Image(systemName: commandInfo.success ? "checkmark.circle.fill" : "xmark.circle.fill")
+							.foregroundStyle(commandInfo.success ? Color.green : Color.orange)
+					}
+
+					// Target app icon for successful window commands
+					if let commandInfo = transcript.commandInfo,
+					   commandInfo.success,
+					   let targetBundleID = commandInfo.targetAppBundleID,
+					   let targetAppURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: targetBundleID) {
+						Image(nsImage: NSWorkspace.shared.icon(forFile: targetAppURL.path))
+							.resizable()
+							.frame(width: 14, height: 14)
+						if let targetName = commandInfo.targetAppName {
+							Text(targetName)
+						}
+						Text("•")
+					} else if let bundleID = transcript.sourceAppBundleID,
 					   let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) {
+						// Source app icon and name for regular entries (or failed commands without target)
 						Image(nsImage: NSWorkspace.shared.icon(forFile: appURL.path))
 							.resizable()
 							.frame(width: 14, height: 14)
@@ -245,7 +288,7 @@ struct TranscriptView: View {
 						}
 						Text("•")
 					}
-					
+
 					Image(systemName: "clock")
 					Text(transcript.timestamp.relativeFormatted())
 					Text("•")
@@ -296,7 +339,7 @@ struct TranscriptView: View {
 		}
 		.background(
 			RoundedRectangle(cornerRadius: 8)
-				.fill(Color(.windowBackgroundColor).opacity(0.5))
+				.fill(commandBackgroundTint ?? Color(.windowBackgroundColor).opacity(0.5))
 				.overlay(
 					RoundedRectangle(cornerRadius: 8)
 						.strokeBorder(Color.secondary.opacity(0.2), lineWidth: 1)
@@ -370,7 +413,7 @@ struct HistoryView: View {
                   transcript: transcript,
                   isPlaying: store.playingTranscriptID == transcript.id,
                   onPlay: { store.send(.playTranscript(transcript.id)) },
-                  onCopy: { store.send(.copyToClipboard(transcript.text)) },
+                  onCopy: { store.send(.copyToClipboard(HistoryFeature.copyText(for: transcript))) },
                   onDelete: { store.send(.deleteTranscript(transcript.id)) }
                 )
               }
