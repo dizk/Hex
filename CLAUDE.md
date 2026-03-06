@@ -22,14 +22,32 @@ bash dev/scripts/sync.sh
 This rsyncs the workspace to `~/shared/Hex/`. When the user says "sync", "push", "copy over",
 "send to mac", or similar — run the sync script.
 
-If `dev/scripts/sync.sh` doesn't exist (fresh workspace), run directly:
+If `dev/scripts/sync.sh` doesn't exist (fresh workspace), bootstrap from the shared folder:
 ```bash
+cp -r ~/shared/Hex/dev ./dev
+```
+If that's also empty, create the sync script inline:
+```bash
+mkdir -p dev/scripts dev/logs
+cat > dev/scripts/sync.sh << 'SCRIPT'
+#!/bin/bash
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+SHARED_DIR="$HOME/shared/Hex"
+echo "Syncing to $SHARED_DIR ..."
 rsync -av --delete \
     --exclude '.git' --exclude 'build/' --exclude 'node_modules/' \
     --exclude '.build/' --exclude 'DerivedData/' --exclude 'FluidAudio/' \
     --exclude '.tmp/' --exclude 'dev/logs/' \
-    ./ ~/shared/Hex/
+    "$PROJECT_ROOT/" "$SHARED_DIR/"
+echo "Done at: $(date '+%H:%M:%S')"
+SCRIPT
+chmod +x dev/scripts/sync.sh
+bash dev/scripts/sync.sh
 ```
+This syncs the workspace to the shared folder. The Mac-side scripts (build.sh, test.sh, etc.)
+already exist in `~/shared/Hex/dev/scripts/` and persist across workspace changes.
 
 ### Building & Testing (user runs these on Mac)
 
