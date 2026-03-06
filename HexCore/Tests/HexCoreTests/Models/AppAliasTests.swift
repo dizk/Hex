@@ -89,4 +89,101 @@ struct AppAliasTests {
 
 		#expect(alias.id == id)
 	}
+
+	// MARK: - Binding simulation (struct mutability for SwiftUI bindings)
+
+	@Test
+	func mutatingAliasField_updatesValue() {
+		var alias = AppAlias(alias: "terminal", appName: "Ghostty")
+		#expect(alias.alias == "terminal")
+
+		alias.alias = "term"
+		#expect(alias.alias == "term")
+		// Other fields unchanged
+		#expect(alias.appName == "Ghostty")
+		#expect(alias.isEnabled == true)
+	}
+
+	@Test
+	func mutatingAppNameField_updatesValue() {
+		var alias = AppAlias(alias: "code", appName: "VS Code")
+		#expect(alias.appName == "VS Code")
+
+		alias.appName = "Visual Studio Code"
+		#expect(alias.appName == "Visual Studio Code")
+		#expect(alias.alias == "code")
+	}
+
+	@Test
+	func mutatingIsEnabled_updatesValue() {
+		var alias = AppAlias(alias: "slack", appName: "Slack")
+		#expect(alias.isEnabled == true)
+
+		alias.isEnabled = false
+		#expect(alias.isEnabled == false)
+	}
+
+	// MARK: - Array operations (used by the view for add/find/remove)
+
+	@Test
+	func arrayAppend_andFindByID_returnsCorrectAlias() {
+		var aliases: [AppAlias] = []
+		let alias1 = AppAlias(alias: "terminal", appName: "Ghostty")
+		let alias2 = AppAlias(alias: "code", appName: "Visual Studio Code")
+
+		aliases.append(alias1)
+		aliases.append(alias2)
+
+		#expect(aliases.count == 2)
+
+		// Find by ID (simulates aliasBinding helper)
+		let found = aliases.first(where: { $0.id == alias2.id })
+		#expect(found != nil)
+		#expect(found?.alias == "code")
+		#expect(found?.appName == "Visual Studio Code")
+	}
+
+	@Test
+	func arrayFindByID_withNonexistentID_returnsNil() {
+		let alias = AppAlias(alias: "terminal", appName: "Ghostty")
+		let aliases = [alias]
+
+		let found = aliases.first(where: { $0.id == UUID() })
+		#expect(found == nil)
+	}
+
+	@Test
+	func arrayRemoveByID_removesCorrectElement() {
+		let alias1 = AppAlias(alias: "terminal", appName: "Ghostty")
+		let alias2 = AppAlias(alias: "code", appName: "Visual Studio Code")
+		let alias3 = AppAlias(alias: "slack", appName: "Slack")
+		var aliases = [alias1, alias2, alias3]
+
+		aliases.removeAll { $0.id == alias2.id }
+
+		#expect(aliases.count == 2)
+		#expect(aliases[0].id == alias1.id)
+		#expect(aliases[1].id == alias3.id)
+	}
+
+	@Test
+	func arrayMutateByIndex_updatesInPlace() {
+		var aliases = [
+			AppAlias(alias: "terminal", appName: "Ghostty"),
+			AppAlias(alias: "code", appName: "VS Code"),
+		]
+
+		// Simulate what the binding does: find index, mutate in place
+		guard let index = aliases.firstIndex(where: { $0.id == aliases[1].id }) else {
+			Issue.record("Expected to find alias by ID")
+			return
+		}
+		aliases[index].alias = "vscode"
+		aliases[index].appName = "Visual Studio Code"
+
+		#expect(aliases[index].alias == "vscode")
+		#expect(aliases[index].appName == "Visual Studio Code")
+		// First alias unchanged
+		#expect(aliases[0].alias == "terminal")
+	}
 }
