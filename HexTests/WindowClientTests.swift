@@ -5,6 +5,7 @@
 //  Tests for the WindowClient TCA dependency.
 //
 
+import ApplicationServices
 import Dependencies
 import Testing
 @testable import Hex
@@ -52,16 +53,14 @@ struct WindowInfoTests {
 
     @Test
     func equality_ignoresWindowReference() {
-        // Two WindowInfo values with identical scalar fields but potentially
-        // different windowReference values should still compare equal.
-        // Since we can't construct distinct AXUIElement values in tests,
-        // we verify that one nil and one nil compare equal (and rely on
-        // the custom Equatable implementation ignoring the field).
+        // Two WindowInfo values with identical scalar fields but different
+        // windowReference values should still compare equal, because the
+        // custom Equatable implementation intentionally ignores that field.
         let a = WindowInfo(
             appName: "Slack",
             windowTitle: "General",
             processIdentifier: 42,
-            windowReference: nil
+            windowReference: AXUIElementCreateSystemWide()
         )
         let b = WindowInfo(
             appName: "Slack",
@@ -258,5 +257,30 @@ struct WindowClientTests {
 
         let result = await client.listWindows()
         #expect(result.isEmpty)
+    }
+
+    @Test
+    func testValue_returnsDefaults() async {
+        // The @DependencyClient macro generates a testValue that returns
+        // the default closures (empty array for listWindows, false for
+        // focusWindow) rather than failing with unimplemented, matching
+        // the pattern used by other clients like RecordingClient.
+        await withDependencies {
+            $0.windowClient = .testValue
+        } operation: {
+            @Dependency(\.windowClient) var client
+
+            let windows = await client.listWindows()
+            #expect(windows.isEmpty)
+
+            let dummyWindow = WindowInfo(
+                appName: "Test",
+                windowTitle: "Window",
+                processIdentifier: 1,
+                windowReference: nil
+            )
+            let focused = await client.focusWindow(dummyWindow)
+            #expect(focused == false)
+        }
     }
 }
