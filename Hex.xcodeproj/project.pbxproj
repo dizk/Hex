@@ -480,6 +480,7 @@
 					"-interposable",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.kitlangton.Hex.debug;
+				PRODUCT_MODULE_NAME = Hex;
 				PRODUCT_NAME = "Hex Debug";
 				RUNTIME_EXCEPTION_ALLOW_DYLD_ENVIRONMENT_VARIABLES = NO;
 				RUNTIME_EXCEPTION_ALLOW_JIT = NO;
