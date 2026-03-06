@@ -7,6 +7,7 @@
 //  non-interference with normal transcription flow.
 //
 
+import Clocks
 import ComposableArchitecture
 import Foundation
 import HexCore
@@ -61,6 +62,7 @@ struct CommandFeedbackTests {
             $0.transcription = .testValue
             $0.keyEventMonitor = .testValue
             $0.date = .constant(Date(timeIntervalSince1970: 1000))
+            $0.continuousClock = ImmediateClock()
 
             $0.pasteboard = PasteboardClient(
                 paste: { text in pastedText?(text) },
@@ -228,6 +230,7 @@ struct CommandFeedbackTests {
                 allowSleep: {}
             )
             $0.date = .constant(Date(timeIntervalSince1970: 1000))
+            $0.continuousClock = ImmediateClock()
             $0.transcriptPersistence = .testValue
             $0.windowClient = WindowClient(
                 listWindows: { Self.testWindows },
@@ -258,6 +261,9 @@ struct CommandFeedbackTests {
         await store.send(.transcriptionResult("switch to chrome", Self.testAudioURL))
         await awaitEffects()
 
+        // transcriptPersistence.save must have been called (audio retained)
+        #expect(savedTranscriptAudioPath != nil, "transcriptPersistence.save should have been called for successful commands")
+
         // For successful commands, the audio should be saved (persisted via transcriptPersistence.save)
         let history = store.state.transcriptionHistory.history
         #expect(!history.isEmpty)
@@ -268,17 +274,22 @@ struct CommandFeedbackTests {
 
     @Test
     func failedCommand_deletesAudio() async {
-        nonisolated(unsafe) var audioFileDeleted = false
+        nonisolated(unsafe) var saveCalled = false
 
         let store = Self.makeTestStore(
-            focusResult: true
+            focusResult: true,
+            savedTranscript: { _ in
+                saveCalled = true
+            }
         )
 
-        // Use a file manager check -- in the failure path, the audio file should be removed
-        // We verify this through the history entry behavior (failed commands should not have
-        // their audio persisted via save)
+        // For the failure path (no matching window), transcriptPersistence.save should NOT
+        // be called — the audio file is deleted directly via FileManager.removeItem.
         await store.send(.transcriptionResult("switch to nonexistent", Self.testAudioURL))
         await awaitEffects()
+
+        // transcriptPersistence.save must NOT have been called for failed commands
+        #expect(!saveCalled, "transcriptPersistence.save should not be called for failed commands")
 
         // The history entry for a failed command should still exist but audio was deleted
         // (not moved to Recordings). The transcript's audioPath points to the original temp

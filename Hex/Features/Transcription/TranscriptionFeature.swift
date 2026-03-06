@@ -90,6 +90,7 @@ struct TranscriptionFeature {
   @Dependency(\.date.now) var now
   @Dependency(\.transcriptPersistence) var transcriptPersistence
   @Dependency(\.windowClient) var windowClient
+  @Dependency(\.continuousClock) var clock
 
   var body: some ReducerOf<Self> {
     Reduce { state, action in
@@ -475,7 +476,11 @@ private extension TranscriptionFeature {
               voiceCommandLogger.error("Failed to focus window '\(matchedWindow.appName, privacy: .public)'")
             }
 
-            // Finalize: save command to history with audio retained
+            // Finalize: save command to history with audio retained.
+            // 1) Build CommandInfo first so intent is clear.
+            // 2) Persist the audio file via transcriptPersistence.save (returns base Transcript).
+            // 3) Attach commandInfo before inserting into @Shared(.transcriptionHistory),
+            //    which auto-persists the full struct (including commandInfo) to disk.
             if saveHistory {
               let commandInfo = CommandInfo(
                 rawInput: result,
@@ -503,7 +508,10 @@ private extension TranscriptionFeature {
             // Delete audio for failed commands
             try? FileManager.default.removeItem(at: audioURL)
 
-            // Save failure entry to history (without audio)
+            // Save failure entry to history (without audio).
+            // Note: audioPath still references the original temp URL whose file was
+            // deleted above. The path is stale but Transcript.audioPath is non-optional,
+            // so we keep it for record-keeping; the UI should check file existence.
             if saveHistory {
               let failedTranscript = Transcript(
                 timestamp: Date(),
@@ -600,8 +608,8 @@ private extension TranscriptionFeature {
 
   /// Returns an effect that waits 0.8 s then sends `.commandFeedbackDismiss` to hide the indicator.
   func scheduleCommandFeedbackDismiss() -> Effect<Action> {
-    .run { send in
-      try? await Task.sleep(for: .seconds(0.8))
+    .run { [clock] send in
+      try? await clock.sleep(for: .seconds(0.8))
       await send(.commandFeedbackDismiss)
     }
     .cancellable(id: CancelID.commandFeedback, cancelInFlight: true)
