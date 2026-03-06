@@ -18,6 +18,13 @@ private let voiceCommandLogger = HexLog.voiceCommands
 
 @Reducer
 struct TranscriptionFeature {
+  /// The subset of `TranscriptionIndicatorView.Status` used for post-command feedback.
+  /// When non-nil, the view shows a brief success/failure flash instead of `.hidden`.
+  enum CommandFeedbackStatus: Equatable {
+    case commandSuccess
+    case commandFailure
+  }
+
   @ObservableState
   struct State: Equatable {
     var isRecording: Bool = false
@@ -29,6 +36,9 @@ struct TranscriptionFeature {
     var sourceAppBundleID: String?
     var sourceAppName: String?
     var cachedWindows: [WindowInfo] = []
+    /// Drives the transcription indicator's command feedback flash.
+    /// Non-nil for 0.8 s after a voice command completes, then auto-dismissed.
+    var commandFeedbackStatus: CommandFeedbackStatus?
     @Shared(.hexSettings) var hexSettings: HexSettings
     @Shared(.isRemappingScratchpadFocused) var isRemappingScratchpadFocused: Bool = false
     @Shared(.modelBootstrapState) var modelBootstrapState: ModelBootstrapState
@@ -58,6 +68,9 @@ struct TranscriptionFeature {
     // Window enumeration (for voice commands)
     case windowsEnumerated([WindowInfo])
 
+    // Command feedback
+    case commandFeedbackDismiss
+
     // Model availability
     case modelMissing
   }
@@ -65,6 +78,7 @@ struct TranscriptionFeature {
   enum CancelID {
     case metering
     case transcription
+    case commandFeedback
   }
 
   @Dependency(\.transcription) var transcription
@@ -129,6 +143,10 @@ struct TranscriptionFeature {
 
       case let .windowsEnumerated(windows):
         state.cachedWindows = windows
+        return .none
+
+      case .commandFeedbackDismiss:
+        state.commandFeedbackStatus = nil
         return .none
 
       case .modelMissing:
@@ -295,9 +313,11 @@ private extension TranscriptionFeature {
       )
     }
     state.isRecording = true
+    // Clear any pending command feedback from a previous voice command
+    state.commandFeedbackStatus = nil
     let startTime = Date()
     state.recordingStartTime = startTime
-    
+
     // Capture the active application
     if let activeApp = NSWorkspace.shared.frontmostApplication {
       state.sourceAppBundleID = activeApp.bundleIdentifier
@@ -307,6 +327,7 @@ private extension TranscriptionFeature {
 
     // Prevent system sleep during recording and enumerate windows for voice commands
     return .merge(
+      .cancel(id: CancelID.commandFeedback),
       .run { [sleepManagement, preventSleep = state.hexSettings.preventSystemSleep] send in
         // Play sound immediately for instant feedback
         soundEffect.play(.startRecording)
@@ -434,23 +455,96 @@ private extension TranscriptionFeature {
       let cachedWindows = state.cachedWindows
       state.cachedWindows = []
 
+      let duration = state.recordingStartTime.map { now.timeIntervalSince($0) } ?? 0
+      let sourceAppBundleID = state.sourceAppBundleID
+      let sourceAppName = state.sourceAppName
+      let transcriptionHistory = state.$transcriptionHistory
+      let saveHistory = state.hexSettings.saveTranscriptionHistory
+      let maxEntries = state.hexSettings.maxHistoryEntries
+
       if let match = WindowMatcher.bestMatch(target: voiceCommandTarget, candidates: candidates) {
         let matchedWindow = cachedWindows[match.index]
         voiceCommandLogger.info("Window matched: '\(matchedWindow.appName, privacy: .public)' – '\(matchedWindow.windowTitle, privacy: .private)' score=\(match.score)")
-        return .run { [windowClient] _ in
-          try? FileManager.default.removeItem(at: audioURL)
-          let focused = await windowClient.focusWindow(matchedWindow)
-          if focused {
-            voiceCommandLogger.info("Window focused successfully")
-          } else {
-            voiceCommandLogger.error("Failed to focus window '\(matchedWindow.appName, privacy: .public)'")
-          }
-        }
+        state.commandFeedbackStatus = .commandSuccess
+        return .merge(
+          .run { [windowClient, transcriptPersistence] _ in
+            let focused = await windowClient.focusWindow(matchedWindow)
+            if focused {
+              voiceCommandLogger.info("Window focused successfully")
+            } else {
+              voiceCommandLogger.error("Failed to focus window '\(matchedWindow.appName, privacy: .public)'")
+            }
+
+            // Finalize: save command to history with audio retained
+            if saveHistory {
+              let commandInfo = CommandInfo(
+                rawInput: result,
+                actionDescription: "Switched to \(matchedWindow.appName)",
+                success: true,
+                targetAppBundleID: matchedWindow.bundleIdentifier,
+                targetAppName: matchedWindow.appName
+              )
+              let transcript = try await transcriptPersistence.save(
+                result, audioURL, duration, sourceAppBundleID, sourceAppName
+              )
+              var commandTranscript = transcript
+              commandTranscript.commandInfo = commandInfo
+              transcriptionHistory.withLock { history in
+                history.history.insert(commandTranscript, at: 0)
+                if let maxEntries, maxEntries > 0 {
+                  while history.history.count > maxEntries {
+                    if let removed = history.history.popLast() {
+                      Task { try? await transcriptPersistence.deleteAudio(removed) }
+                    }
+                  }
+                }
+              }
+            } else {
+              try? FileManager.default.removeItem(at: audioURL)
+            }
+          },
+          scheduleCommandFeedbackDismiss()
+        )
       } else {
         voiceCommandLogger.info("No window matched for target '\(voiceCommandTarget, privacy: .private)'; discarding command")
-        return .run { _ in
-          try? FileManager.default.removeItem(at: audioURL)
-        }
+        state.commandFeedbackStatus = .commandFailure
+        return .merge(
+          .run { _ in
+            // Delete audio for failed commands
+            try? FileManager.default.removeItem(at: audioURL)
+
+            // Save failure entry to history (without audio)
+            if saveHistory {
+              let commandInfo = CommandInfo(
+                rawInput: result,
+                actionDescription: "No matching window found",
+                success: false,
+                targetAppBundleID: nil,
+                targetAppName: nil
+              )
+              let failedTranscript = Transcript(
+                timestamp: Date(),
+                text: result,
+                audioPath: audioURL,
+                duration: duration,
+                sourceAppBundleID: sourceAppBundleID,
+                sourceAppName: sourceAppName,
+                commandInfo: commandInfo
+              )
+              transcriptionHistory.withLock { history in
+                history.history.insert(failedTranscript, at: 0)
+                if let maxEntries, maxEntries > 0 {
+                  while history.history.count > maxEntries {
+                    if let removed = history.history.popLast() {
+                      Task { try? await transcriptPersistence.deleteAudio(removed) }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          scheduleCommandFeedbackDismiss()
+        )
       }
     }
 
@@ -524,6 +618,15 @@ private extension TranscriptionFeature {
     }
 
     return .none
+  }
+
+  /// Returns an effect that waits 0.8 s then sends `.commandFeedbackDismiss` to hide the indicator.
+  func scheduleCommandFeedbackDismiss() -> Effect<Action> {
+    .run { send in
+      try? await Task.sleep(for: .seconds(0.8))
+      await send(.commandFeedbackDismiss)
+    }
+    .cancellable(id: CancelID.commandFeedback, cancelInFlight: true)
   }
 
   /// Move file to permanent location, create a transcript record, paste text, and play sound.
@@ -618,6 +721,11 @@ struct TranscriptionView: View {
       return .recording
     } else if store.isPrewarming {
       return .prewarming
+    } else if let feedbackStatus = store.commandFeedbackStatus {
+      switch feedbackStatus {
+      case .commandSuccess: return .commandSuccess
+      case .commandFailure: return .commandFailure
+      }
     } else {
       return .hidden
     }
