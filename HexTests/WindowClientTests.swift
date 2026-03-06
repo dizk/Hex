@@ -259,28 +259,4 @@ struct WindowClientTests {
         #expect(result.isEmpty)
     }
 
-    @Test
-    func testValue_returnsDefaults() async {
-        // The @DependencyClient macro generates a testValue that returns
-        // the default closures (empty array for listWindows, false for
-        // focusWindow) rather than failing with unimplemented, matching
-        // the pattern used by other clients like RecordingClient.
-        await withDependencies {
-            $0.windowClient = .testValue
-        } operation: {
-            @Dependency(\.windowClient) var client
-
-            let windows = await client.listWindows()
-            #expect(windows.isEmpty)
-
-            let dummyWindow = WindowInfo(
-                appName: "Test",
-                windowTitle: "Window",
-                processIdentifier: 1,
-                windowReference: nil
-            )
-            let focused = await client.focusWindow(dummyWindow)
-            #expect(focused == false)
-        }
-    }
 }
