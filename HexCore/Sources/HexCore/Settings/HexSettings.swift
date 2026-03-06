@@ -46,6 +46,7 @@ public struct HexSettings: Codable, Equatable, Sendable {
 	public var wordRemovalsEnabled: Bool
 	public var wordRemovals: [WordRemoval]
 	public var wordRemappings: [WordRemapping]
+	public var appAliases: [AppAlias]
 
 	private mutating func normalizeDoubleTapSettings() {
 		if !doubleTapLockEnabled {
@@ -76,7 +77,8 @@ public struct HexSettings: Codable, Equatable, Sendable {
 		hasCompletedStorageMigration: Bool = false,
 		wordRemovalsEnabled: Bool = false,
 		wordRemovals: [WordRemoval] = HexSettings.defaultWordRemovals,
-		wordRemappings: [WordRemapping] = []
+		wordRemappings: [WordRemapping] = [],
+		appAliases: [AppAlias] = []
 	) {
 		self.soundEffectsEnabled = soundEffectsEnabled
 		self.soundEffectsVolume = soundEffectsVolume
@@ -101,6 +103,7 @@ public struct HexSettings: Codable, Equatable, Sendable {
 		self.wordRemovalsEnabled = wordRemovalsEnabled
 		self.wordRemovals = wordRemovals
 		self.wordRemappings = wordRemappings
+		self.appAliases = appAliases
 		normalizeDoubleTapSettings()
 	}
 
@@ -148,6 +151,7 @@ private enum HexSettingKey: String, CodingKey, CaseIterable {
 	case wordRemovalsEnabled
 	case wordRemovals
 	case wordRemappings
+	case appAliases
 }
 
 private struct SettingsField<Value: Codable & Sendable> {
@@ -279,6 +283,7 @@ private enum HexSettingsSchema {
 			.wordRemappings,
 			keyPath: \.wordRemappings,
 			default: defaults.wordRemappings
-		).eraseToAny()
+		).eraseToAny(),
+		SettingsField(.appAliases, keyPath: \.appAliases, default: defaults.appAliases).eraseToAny()
 	]
 }
