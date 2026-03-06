@@ -221,6 +221,7 @@ struct VoiceCommandIntegrationTests {
         await awaitEffects()
 
         #expect(listWindowsCalled == true)
+        #expect(store.state.cachedWindows == Self.testWindows)
     }
 
     // MARK: - Test: Cancel clears cachedWindows
