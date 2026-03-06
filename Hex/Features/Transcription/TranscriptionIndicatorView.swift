@@ -11,47 +11,72 @@ import SwiftUI
 struct TranscriptionIndicatorView: View {
   @ObserveInjection var inject
   
-  enum Status {
+  enum Status: Equatable {
     case hidden
     case optionKeyPressed
     case recording
     case transcribing
     case prewarming
+    case commandSuccess
+    case commandFailure
+
+    // MARK: - Base color properties (testable, meter-independent)
+
+    private static let transcribeBaseColor: Color = .blue
+
+    /// The base background color for each status (without meter modulation).
+    var baseBackgroundColor: Color {
+      switch self {
+      case .hidden: return Color.clear
+      case .optionKeyPressed: return Color.black
+      case .recording: return Color.red
+      case .transcribing: return Self.transcribeBaseColor.mix(with: .black, by: 0.5)
+      case .prewarming: return Self.transcribeBaseColor.mix(with: .black, by: 0.5)
+      case .commandSuccess: return Color.green
+      case .commandFailure: return Color.red
+      }
+    }
+
+    /// The base stroke color for each status.
+    var baseStrokeColor: Color {
+      switch self {
+      case .hidden: return Color.clear
+      case .optionKeyPressed: return Color.black
+      case .recording: return Color.red.mix(with: .white, by: 0.1).opacity(0.6)
+      case .transcribing: return Self.transcribeBaseColor.mix(with: .white, by: 0.1).opacity(0.6)
+      case .prewarming: return Self.transcribeBaseColor.mix(with: .white, by: 0.1).opacity(0.6)
+      case .commandSuccess: return Color.green.mix(with: .white, by: 0.3)
+      case .commandFailure: return Color.red.mix(with: .white, by: 0.3)
+      }
+    }
+
+    /// The base inner shadow color for each status.
+    var baseInnerShadowColor: Color {
+      switch self {
+      case .hidden: return Color.clear
+      case .optionKeyPressed: return Color.clear
+      case .recording: return Color.red
+      case .transcribing: return Self.transcribeBaseColor
+      case .prewarming: return Self.transcribeBaseColor
+      case .commandSuccess: return Color.green.mix(with: .black, by: 0.3)
+      case .commandFailure: return Color.red.mix(with: .black, by: 0.3)
+      }
+    }
   }
 
   var status: Status
   var meter: Meter
 
-  let transcribeBaseColor: Color = .blue
+  /// Background color with meter modulation for recording; delegates to Status for all others.
   private var backgroundColor: Color {
-    switch status {
-    case .hidden: return Color.clear
-    case .optionKeyPressed: return Color.black
-    case .recording: return .red.mix(with: .black, by: 0.5).mix(with: .red, by: meter.averagePower * 3)
-    case .transcribing: return transcribeBaseColor.mix(with: .black, by: 0.5)
-    case .prewarming: return transcribeBaseColor.mix(with: .black, by: 0.5)
+    if status == .recording {
+      return .red.mix(with: .black, by: 0.5).mix(with: .red, by: meter.averagePower * 3)
     }
+    return status.baseBackgroundColor
   }
 
-  private var strokeColor: Color {
-    switch status {
-    case .hidden: return Color.clear
-    case .optionKeyPressed: return Color.black
-    case .recording: return Color.red.mix(with: .white, by: 0.1).opacity(0.6)
-    case .transcribing: return transcribeBaseColor.mix(with: .white, by: 0.1).opacity(0.6)
-    case .prewarming: return transcribeBaseColor.mix(with: .white, by: 0.1).opacity(0.6)
-    }
-  }
-
-  private var innerShadowColor: Color {
-    switch status {
-    case .hidden: return Color.clear
-    case .optionKeyPressed: return Color.clear
-    case .recording: return Color.red
-    case .transcribing: return transcribeBaseColor
-    case .prewarming: return transcribeBaseColor
-    }
-  }
+  private var strokeColor: Color { status.baseStrokeColor }
+  private var innerShadowColor: Color { status.baseInnerShadowColor }
 
   private let cornerRadius: CGFloat = 8
   private let baseWidth: CGFloat = 16
@@ -62,6 +87,9 @@ struct TranscriptionIndicatorView: View {
   }
 
   @State var transcribeEffect = 0
+  @State var commandSuccessGlow = 0
+  @State var commandFailureGlow = 0
+  @State var failureFlashOpacity: Double = 1.0
 
   var body: some View {
     let averagePower = min(1, meter.averagePower * 3)
@@ -113,17 +141,36 @@ struct TranscriptionIndicatorView: View {
           width: status == .recording ? expandedWidth : baseWidth,
           height: baseWidth
         )
-        .opacity(status == .hidden ? 0 : 1)
+        .opacity(status == .hidden ? 0 : (status == .commandFailure ? failureFlashOpacity : 1.0))
         .scaleEffect(status == .hidden ? 0.0 : 1)
         .blur(radius: status == .hidden ? 4 : 0)
         .animation(.bouncy(duration: 0.3), value: status)
-        .changeEffect(.glow(color: .red.opacity(0.5), radius: 8), value: status)
+        .changeEffect(.glow(color: .red.opacity(0.5), radius: 8), value: status == .recording)
+        .changeEffect(.glow(color: .green, radius: 8), value: commandSuccessGlow)
+        .changeEffect(.glow(color: .red, radius: 8), value: commandFailureGlow)
         .changeEffect(.shine(angle: .degrees(0), duration: 0.6), value: transcribeEffect)
         .compositingGroup()
         .task(id: status == .transcribing) {
           while status == .transcribing, !Task.isCancelled {
             transcribeEffect += 1
             try? await Task.sleep(for: .seconds(0.25))
+          }
+        }
+        .task(id: status == .commandSuccess) {
+          guard status == .commandSuccess else { return }
+          commandSuccessGlow += 1
+        }
+        .task(id: status == .commandFailure) {
+          guard status == .commandFailure, !Task.isCancelled else { return }
+          commandFailureGlow += 1
+          // Double-flash: toggle opacity off/on twice with ~150ms intervals
+          for _ in 0..<2 {
+            failureFlashOpacity = 0.0
+            try? await Task.sleep(for: .milliseconds(150))
+            guard !Task.isCancelled else { break }
+            failureFlashOpacity = 1.0
+            try? await Task.sleep(for: .milliseconds(150))
+            guard !Task.isCancelled else { break }
           }
         }
       
@@ -156,6 +203,8 @@ struct TranscriptionIndicatorView: View {
     TranscriptionIndicatorView(status: .recording, meter: .init(averagePower: 0.5, peakPower: 0.5))
     TranscriptionIndicatorView(status: .transcribing, meter: .init(averagePower: 0, peakPower: 0))
     TranscriptionIndicatorView(status: .prewarming, meter: .init(averagePower: 0, peakPower: 0))
+    TranscriptionIndicatorView(status: .commandSuccess, meter: .init(averagePower: 0, peakPower: 0))
+    TranscriptionIndicatorView(status: .commandFailure, meter: .init(averagePower: 0, peakPower: 0))
   }
   .padding(40)
 }

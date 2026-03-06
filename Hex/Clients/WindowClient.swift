@@ -22,7 +22,22 @@ struct WindowInfo: Identifiable, @unchecked Sendable {
     let appName: String
     let windowTitle: String
     let processIdentifier: pid_t
+    let bundleIdentifier: String?
     let windowReference: AXUIElement?
+
+    init(
+        appName: String,
+        windowTitle: String,
+        processIdentifier: pid_t,
+        bundleIdentifier: String? = nil,
+        windowReference: AXUIElement?
+    ) {
+        self.appName = appName
+        self.windowTitle = windowTitle
+        self.processIdentifier = processIdentifier
+        self.bundleIdentifier = bundleIdentifier
+        self.windowReference = windowReference
+    }
 
     var id: String {
         "\(processIdentifier):\(windowTitle)"
@@ -36,6 +51,7 @@ extension WindowInfo: Equatable {
         lhs.appName == rhs.appName
             && lhs.windowTitle == rhs.windowTitle
             && lhs.processIdentifier == rhs.processIdentifier
+            && lhs.bundleIdentifier == rhs.bundleIdentifier
     }
 }
 
@@ -65,11 +81,11 @@ extension WindowClient: DependencyKey {
         Self(
             listWindows: {
                 [
-                    WindowInfo(appName: "Safari", windowTitle: "Apple", processIdentifier: 100, windowReference: nil),
-                    WindowInfo(appName: "Slack", windowTitle: "General", processIdentifier: 200, windowReference: nil),
-                    WindowInfo(appName: "Terminal", windowTitle: "bash", processIdentifier: 300, windowReference: nil),
-                    WindowInfo(appName: "Xcode", windowTitle: "Hex.xcodeproj", processIdentifier: 400, windowReference: nil),
-                    WindowInfo(appName: "Notes", windowTitle: "Shopping List", processIdentifier: 500, windowReference: nil),
+                    WindowInfo(appName: "Safari", windowTitle: "Apple", processIdentifier: 100, bundleIdentifier: "com.apple.Safari", windowReference: nil),
+                    WindowInfo(appName: "Slack", windowTitle: "General", processIdentifier: 200, bundleIdentifier: "com.tinyspeck.slackmacgap", windowReference: nil),
+                    WindowInfo(appName: "Terminal", windowTitle: "bash", processIdentifier: 300, bundleIdentifier: "com.apple.Terminal", windowReference: nil),
+                    WindowInfo(appName: "Xcode", windowTitle: "Hex.xcodeproj", processIdentifier: 400, bundleIdentifier: "com.apple.dt.Xcode", windowReference: nil),
+                    WindowInfo(appName: "Notes", windowTitle: "Shopping List", processIdentifier: 500, bundleIdentifier: "com.apple.Notes", windowReference: nil),
                 ]
             },
             focusWindow: { _ in true }
@@ -180,6 +196,7 @@ private enum WindowClientLive {
                     appName: appName,
                     windowTitle: title,
                     processIdentifier: pid,
+                    bundleIdentifier: app.bundleIdentifier,
                     windowReference: windowElement
                 )
                 result.append(info)
