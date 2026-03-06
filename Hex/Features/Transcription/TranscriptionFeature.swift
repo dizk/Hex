@@ -19,7 +19,7 @@ private let voiceCommandLogger = HexLog.voiceCommands
 @Reducer
 struct TranscriptionFeature {
   @ObservableState
-  struct State {
+  struct State: Equatable {
     var isRecording: Bool = false
     var isTranscribing: Bool = false
     var isPrewarming: Bool = false
