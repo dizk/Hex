@@ -6,19 +6,65 @@ This file provides guidance for coding agents working in this repo.
 
 Hex is a macOS menu bar application for on‑device voice‑to‑text. It supports Whisper (Core ML via WhisperKit) and Parakeet TDT v3 (Core ML via FluidAudio). Users activate transcription with hotkeys; text can be auto‑pasted into the active app.
 
-## Build & Development Commands
+## VM ↔ Mac Dev Workflow
+
+Development happens in a Linux VM (no Xcode). The Mac host builds and runs the app.
+The shared folder is mounted at `~/shared/` on the VM.
+
+### Syncing to Mac
+
+After making code changes, **always sync** to the shared folder before asking the user to build:
 
 ```bash
-# Build the app
+bash dev/scripts/sync.sh
+```
+
+This rsyncs the workspace to `~/shared/Hex/`. When the user says "sync", "push", "copy over",
+"send to mac", or similar — run the sync script.
+
+If `dev/scripts/sync.sh` doesn't exist (fresh workspace), run directly:
+```bash
+rsync -av --delete \
+    --exclude '.git' --exclude 'build/' --exclude 'node_modules/' \
+    --exclude '.build/' --exclude 'DerivedData/' --exclude 'FluidAudio/' \
+    --exclude '.tmp/' --exclude 'dev/logs/' \
+    ./ ~/shared/Hex/
+```
+
+### Building & Testing (user runs these on Mac)
+
+```bash
+dev/scripts/build.sh              # Build (Debug by default)
+dev/scripts/build.sh Release      # Release build
+dev/scripts/test.sh               # Full Xcode tests
+dev/scripts/test-core.sh          # HexCore unit tests (faster)
+dev/scripts/logs.sh               # Stream live app logs
+dev/scripts/logs-recent.sh        # Dump last 5 min of app logs
+```
+
+### Reading logs from VM
+
+After the user builds/tests, read the results:
+
+```bash
+# Build results
+~/shared/Hex/dev/logs/build-summary.log   # Errors + pass/fail
+~/shared/Hex/dev/logs/build.log           # Full output
+
+# Test results
+~/shared/Hex/dev/logs/test-summary.log
+~/shared/Hex/dev/logs/test-core-summary.log
+
+# Runtime app logs
+~/shared/Hex/dev/logs/app.log
+```
+
+### Legacy build commands (Mac-only, for reference)
+
+```bash
 xcodebuild -scheme Hex -configuration Release
-
-# Run tests (must be run from HexCore directory for unit tests)
 cd HexCore && swift test
-
-# Or run all tests via Xcode
 xcodebuild test -scheme Hex
-
-# Open in Xcode (recommended for development)
 open Hex.xcodeproj
 ```
 
