@@ -53,8 +53,9 @@ struct WindowMatcherTests {
 
     @Test
     func terminal_matchesTerminal_exactTokenMatch() {
+        // Terminal.app typically shows its name in the window title
         let candidates = [
-            candidate("Terminal", "bash", 0),
+            candidate("Terminal", "Terminal -- bash", 0),
         ]
         let result = WindowMatcher.bestMatch(target: "terminal", candidates: candidates)
         #expect(result != nil)
