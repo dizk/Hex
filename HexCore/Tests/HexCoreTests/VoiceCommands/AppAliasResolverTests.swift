@@ -110,4 +110,58 @@ struct AppAliasResolverTests {
         let result = AppAliasResolver.resolve(target: "  terminal  ", aliases: aliases)
         #expect(result == "  terminal  ")
     }
+
+    // MARK: - End-to-end: alias resolution + window matching
+
+    @Test
+    func endToEnd_aliasResolvesToWindowMatch() {
+        // User says "switch to terminal", alias maps "terminal" -> "Ghostty"
+        let aliases = [
+            AppAlias(alias: "terminal", appName: "Ghostty"),
+        ]
+        let resolvedTarget = AppAliasResolver.resolve(target: "terminal", aliases: aliases)
+        #expect(resolvedTarget == "Ghostty")
+
+        let candidates = [
+            WindowCandidate(appName: "Ghostty", windowTitle: "~", index: 0),
+        ]
+        let match = WindowMatcher.bestMatch(target: resolvedTarget, candidates: candidates)
+        #expect(match != nil)
+        #expect(match?.index == 0)
+        #expect(match!.score >= 50)
+    }
+
+    @Test
+    func endToEnd_noAlias_fallbackMatchesRealName() {
+        // No aliases defined, target "slack" passes through unchanged
+        let aliases: [AppAlias] = []
+        let resolvedTarget = AppAliasResolver.resolve(target: "slack", aliases: aliases)
+        #expect(resolvedTarget == "slack")
+
+        let candidates = [
+            WindowCandidate(appName: "Slack", windowTitle: "general", index: 0),
+        ]
+        let match = WindowMatcher.bestMatch(target: resolvedTarget, candidates: candidates)
+        #expect(match != nil)
+        #expect(match?.index == 0)
+        #expect(match!.score >= 50)
+    }
+
+    @Test
+    func endToEnd_disabledAlias_fallbackToRealName() {
+        // Disabled alias ("slack" -> "Discord"), target "slack" passes through as "slack"
+        let aliases = [
+            AppAlias(isEnabled: false, alias: "slack", appName: "Discord"),
+        ]
+        let resolvedTarget = AppAliasResolver.resolve(target: "slack", aliases: aliases)
+        #expect(resolvedTarget == "slack")
+
+        let candidates = [
+            WindowCandidate(appName: "Slack", windowTitle: "general", index: 0),
+            WindowCandidate(appName: "Discord", windowTitle: "#chat", index: 1),
+        ]
+        let match = WindowMatcher.bestMatch(target: resolvedTarget, candidates: candidates)
+        #expect(match != nil)
+        #expect(match?.index == 0) // Should match Slack, not Discord
+    }
 }
