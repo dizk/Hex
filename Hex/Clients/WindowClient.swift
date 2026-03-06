@@ -113,17 +113,21 @@ private enum WindowClientLive {
             return false
         }
 
-        // Step 2: Activate the application to bring it in front of all other apps
-        guard let app = NSRunningApplication(processIdentifier: window.processIdentifier) else {
-            windowLogger.error("focusWindow: NSRunningApplication not found for pid \(window.processIdentifier)")
+        // Step 2: Bring the application to front via AX API
+        // NSRunningApplication.activate() fails in sandbox, so use AXUIElement instead
+        let appElement = AXUIElementCreateApplication(window.processIdentifier)
+        let frontmostResult = AXUIElementSetAttributeValue(
+            appElement,
+            kAXFrontmostAttribute as CFString,
+            kCFBooleanTrue
+        )
+
+        if frontmostResult != .success {
+            windowLogger.error("focusWindow: set frontmost failed (\(frontmostResult.rawValue)) for \(window.appName, privacy: .public)")
             return false
         }
 
-        let activated = app.activate(options: .activateIgnoringOtherApps)
-        if !activated {
-            windowLogger.error("focusWindow: activate failed for \(window.appName, privacy: .public)")
-        }
-        return activated
+        return true
     }
 
     // MARK: - Private Helpers
@@ -152,7 +156,6 @@ private enum WindowClientLive {
             guard windowsResult == .success,
                   let windowArray = windowsRef as? [AXUIElement]
             else {
-                // Some apps don't expose windows via AX; skip silently
                 continue
             }
 
