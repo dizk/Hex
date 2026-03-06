@@ -65,4 +65,57 @@ struct AppAliasSettingsTests {
 
 		#expect(decoded.appAliases == [])
 	}
+
+	// MARK: - Add alias mutation (mirrors addAppAlias reducer action)
+
+	@Test
+	func appendingEmptyAlias_toEmptyList_resultsInOneEntry() {
+		var settings = HexSettings()
+		#expect(settings.appAliases.isEmpty)
+
+		settings.appAliases.append(.init(alias: "", appName: ""))
+
+		#expect(settings.appAliases.count == 1)
+		#expect(settings.appAliases[0].alias == "")
+		#expect(settings.appAliases[0].appName == "")
+		#expect(settings.appAliases[0].isEnabled == true)
+	}
+
+	@Test
+	func appendingEmptyAlias_toExistingList_appendsAtEnd() {
+		let existing = AppAlias(alias: "terminal", appName: "Ghostty")
+		var settings = HexSettings(appAliases: [existing])
+
+		settings.appAliases.append(.init(alias: "", appName: ""))
+
+		#expect(settings.appAliases.count == 2)
+		#expect(settings.appAliases[0].alias == "terminal")
+		#expect(settings.appAliases[1].alias == "")
+	}
+
+	// MARK: - Remove alias mutation (mirrors removeAppAlias reducer action)
+
+	@Test
+	func removingByID_removesCorrectAlias() {
+		let alias1 = AppAlias(alias: "terminal", appName: "Ghostty")
+		let alias2 = AppAlias(alias: "code", appName: "Visual Studio Code")
+		var settings = HexSettings(appAliases: [alias1, alias2])
+
+		settings.appAliases.removeAll { $0.id == alias1.id }
+
+		#expect(settings.appAliases.count == 1)
+		#expect(settings.appAliases[0].id == alias2.id)
+		#expect(settings.appAliases[0].alias == "code")
+	}
+
+	@Test
+	func removingByID_withNonexistentID_leavesListUnchanged() {
+		let alias1 = AppAlias(alias: "terminal", appName: "Ghostty")
+		var settings = HexSettings(appAliases: [alias1])
+
+		settings.appAliases.removeAll { $0.id == UUID() }
+
+		#expect(settings.appAliases.count == 1)
+		#expect(settings.appAliases[0].id == alias1.id)
+	}
 }
