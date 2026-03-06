@@ -103,6 +103,11 @@ struct VoiceCommandIntegrationTests {
         return store
     }
 
+    /// Waits briefly for async effects to complete.
+    private func awaitEffects() async {
+        try? await Task.sleep(for: .milliseconds(150))
+    }
+
     // MARK: - Test: Voice command "switch to huddle" matches Slack window
 
     @Test
@@ -118,6 +123,7 @@ struct VoiceCommandIntegrationTests {
         )
 
         await store.send(.transcriptionResult("switch to huddle", Self.testAudioURL))
+        await awaitEffects()
 
         // The Slack window with "Huddle with Kit" should have been focused.
         #expect(capturedFocusedWindow == Self.testWindows[1])
@@ -137,6 +143,7 @@ struct VoiceCommandIntegrationTests {
         )
 
         await store.send(.transcriptionResult("switch to nonexistent", Self.testAudioURL))
+        await awaitEffects()
 
         // Command prefix was detected but no window matched.
         // Text should NOT be pasted.
@@ -155,6 +162,7 @@ struct VoiceCommandIntegrationTests {
         )
 
         await store.send(.transcriptionResult("hello this is a normal sentence", Self.testAudioURL))
+        await awaitEffects()
 
         // No voice command prefix detected, so text should be pasted normally.
         #expect(capturedPastedText == "hello this is a normal sentence")
@@ -210,9 +218,7 @@ struct VoiceCommandIntegrationTests {
         store.exhaustivity = .off
 
         await store.send(.startRecording)
-
-        // Give the async effect time to complete
-        try? await Task.sleep(for: .milliseconds(200))
+        await awaitEffects()
 
         #expect(listWindowsCalled == true)
     }
@@ -229,7 +235,7 @@ struct VoiceCommandIntegrationTests {
 
         await store.send(.cancel)
 
-        // After cancel, cachedWindows should be cleared.
+        // cachedWindows is cleared synchronously in the reducer.
         #expect(store.state.cachedWindows.isEmpty)
     }
 
@@ -248,6 +254,7 @@ struct VoiceCommandIntegrationTests {
         )
 
         await store.send(.transcriptionResult("switch to huddle", Self.testAudioURL))
+        await awaitEffects()
 
         // Focus was attempted (command was recognized).
         #expect(capturedFocusedWindow != nil)
@@ -270,6 +277,7 @@ struct VoiceCommandIntegrationTests {
         )
 
         await store.send(.transcriptionResult("open chrome", Self.testAudioURL))
+        await awaitEffects()
 
         // Chrome window should have been focused (app name match).
         #expect(capturedFocusedWindow == Self.testWindows[2])
@@ -289,7 +297,7 @@ struct VoiceCommandIntegrationTests {
 
         await store.send(.discard)
 
-        // After discard, cachedWindows should be cleared.
+        // cachedWindows is cleared synchronously in the reducer.
         #expect(store.state.cachedWindows.isEmpty)
     }
 }

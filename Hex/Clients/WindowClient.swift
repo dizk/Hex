@@ -13,8 +13,7 @@ import DependenciesMacros
 import Foundation
 import HexCore
 
-// TODO: Replace with HexLog.voiceCommands once the category is added in Task 2.1
-private let windowLogger = HexLog.app
+private let windowLogger = HexLog.voiceCommands
 
 // MARK: - WindowInfo
 
