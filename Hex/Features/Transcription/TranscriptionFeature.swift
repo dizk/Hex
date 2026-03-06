@@ -484,21 +484,11 @@ private extension TranscriptionFeature {
                 targetAppBundleID: matchedWindow.bundleIdentifier,
                 targetAppName: matchedWindow.appName
               )
-              let transcript = try await transcriptPersistence.save(
+              var transcript = try await transcriptPersistence.save(
                 result, audioURL, duration, sourceAppBundleID, sourceAppName
               )
-              var commandTranscript = transcript
-              commandTranscript.commandInfo = commandInfo
-              transcriptionHistory.withLock { history in
-                history.history.insert(commandTranscript, at: 0)
-                if let maxEntries, maxEntries > 0 {
-                  while history.history.count > maxEntries {
-                    if let removed = history.history.popLast() {
-                      Task { try? await transcriptPersistence.deleteAudio(removed) }
-                    }
-                  }
-                }
-              }
+              transcript.commandInfo = commandInfo
+              self.insertIntoHistory(transcript, history: transcriptionHistory, maxEntries: maxEntries)
             } else {
               try? FileManager.default.removeItem(at: audioURL)
             }
@@ -515,13 +505,6 @@ private extension TranscriptionFeature {
 
             // Save failure entry to history (without audio)
             if saveHistory {
-              let commandInfo = CommandInfo(
-                rawInput: result,
-                actionDescription: "No matching window found",
-                success: false,
-                targetAppBundleID: nil,
-                targetAppName: nil
-              )
               let failedTranscript = Transcript(
                 timestamp: Date(),
                 text: result,
@@ -529,18 +512,13 @@ private extension TranscriptionFeature {
                 duration: duration,
                 sourceAppBundleID: sourceAppBundleID,
                 sourceAppName: sourceAppName,
-                commandInfo: commandInfo
+                commandInfo: CommandInfo(
+                  rawInput: result,
+                  actionDescription: "No matching window found",
+                  success: false
+                )
               )
-              transcriptionHistory.withLock { history in
-                history.history.insert(failedTranscript, at: 0)
-                if let maxEntries, maxEntries > 0 {
-                  while history.history.count > maxEntries {
-                    if let removed = history.history.popLast() {
-                      Task { try? await transcriptPersistence.deleteAudio(removed) }
-                    }
-                  }
-                }
-              }
+              self.insertIntoHistory(failedTranscript, history: transcriptionHistory, maxEntries: maxEntries)
             }
           },
           scheduleCommandFeedbackDismiss()
@@ -629,6 +607,26 @@ private extension TranscriptionFeature {
     .cancellable(id: CancelID.commandFeedback, cancelInFlight: true)
   }
 
+  /// Insert a transcript into history (prepend), pruning oldest entries if over `maxEntries`.
+  private func insertIntoHistory(
+    _ transcript: Transcript,
+    history: Shared<TranscriptionHistory>,
+    maxEntries: Int?
+  ) {
+    history.withLock { h in
+      h.history.insert(transcript, at: 0)
+      if let maxEntries, maxEntries > 0 {
+        while h.history.count > maxEntries {
+          if let removed = h.history.popLast() {
+            Task { [transcriptPersistence] in
+              try? await transcriptPersistence.deleteAudio(removed)
+            }
+          }
+        }
+      }
+    }
+  }
+
   /// Move file to permanent location, create a transcript record, paste text, and play sound.
   func finalizeRecordingAndStoreTranscript(
     result: String,
@@ -648,20 +646,7 @@ private extension TranscriptionFeature {
         sourceAppBundleID,
         sourceAppName
       )
-
-      transcriptionHistory.withLock { history in
-        history.history.insert(transcript, at: 0)
-
-        if let maxEntries = hexSettings.maxHistoryEntries, maxEntries > 0 {
-          while history.history.count > maxEntries {
-            if let removedTranscript = history.history.popLast() {
-              Task {
-                 try? await transcriptPersistence.deleteAudio(removedTranscript)
-              }
-            }
-          }
-        }
-      }
+      insertIntoHistory(transcript, history: transcriptionHistory, maxEntries: hexSettings.maxHistoryEntries)
     } else {
       try? FileManager.default.removeItem(at: audioURL)
     }
